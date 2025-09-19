@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import './App.css';
 import cropImage from './homepage.png';
 import { motion, AnimatePresence } from "framer-motion";
 import { MdHeadsetMic, MdChat, MdEmail } from "react-icons/md";
 import { FiChevronDown, FiChevronUp, FiCloud, FiMapPin, FiSun, FiCloudRain } from "react-icons/fi";
+import { WiDaySunny, WiCloudy, WiRain, WiStrongWind } from "react-icons/wi";
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -27,7 +28,209 @@ ChartJS.register(
   Legend
 );
 
-const API_KEY = "d5731031a0237bc1303888ac67aa770"; // your OpenWeather API key
+// WeatherSection Component
+function WeatherSection() {
+  const [city, setCity] = useState("");
+  const [weather, setWeather] = useState(null);
+  const [error, setError] = useState("");
+  const [forecast, setForecast] = useState({ labels: [], data: [] });
+  
+  const getWeather = async () => {
+    if (!city) return;
+
+    try {
+      setError("");
+      setWeather(null);
+
+      const res = await fetch(
+        `https://api.openweathermap.org/data/2.5/weather?q=${city}&appid=65db789d1b8b8caf2754b8a707dd85d9&units=metric`
+      );
+
+      if (!res.ok) {
+        throw new Error("City not found");
+      }
+
+      const data = await res.json();
+      setWeather({
+        name: data.name,
+        temp: Math.round(data.main.temp),
+        feelsLike: Math.round(data.main.feels_like),
+        humidity: data.main.humidity,
+        windSpeed: data.wind.speed,
+        description: data.weather[0].description,
+        icon: data.weather[0].icon,
+        country: data.sys.country,
+      });
+
+      // Generate mock forecast data for the chart
+      const mockForecastLabels = ["Today", "Tomorrow", "Day 3", "Day 4", "Day 5"];
+      const mockForecastData = [
+        data.main.temp,
+        data.main.temp + Math.random() * 4 - 2,
+        data.main.temp + Math.random() * 6 - 3,
+        data.main.temp + Math.random() * 5 - 2.5,
+        data.main.temp + Math.random() * 4 - 2
+      ].map(temp => Math.round(temp));
+
+      setForecast({
+        labels: mockForecastLabels,
+        data: mockForecastData
+      });
+
+    } catch (err) {
+      setError(err.message || "Something went wrong");
+      setWeather(null);
+    }
+  };
+
+  // Get current date
+  const getCurrentDate = () => {
+    const days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const now = new Date();
+    return `${days[now.getDay()]} | ${now.getDate()} ${months[now.getMonth()]} ${now.getFullYear()}`;
+  };
+
+  // Chart configuration
+  const chartOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: { display: false },
+      title: {
+        display: true,
+        text: '5-Day Temperature Forecast',
+        color: '#333',
+        font: {
+          size: 16,
+          weight: 'bold'
+        }
+      }
+    },
+    scales: {
+      x: {
+        grid: { color: "rgba(200,200,200,0.2)" },
+        ticks: { color: "#555", font: { size: 12, weight: "500" } },
+      },
+      y: {
+        grid: { color: "rgba(200,200,200,0.2)" },
+        ticks: { 
+          color: "#555", 
+          font: { size: 12, weight: "500" },
+          callback: function(value) {
+            return value + '°C';
+          }
+        },
+      },
+    },
+  };
+
+  // Chart data for forecast
+  const chartData = {
+    labels: forecast?.labels || [],
+    datasets: [
+      {
+        label: "Temperature (°C)",
+        data: forecast?.data || [],
+        fill: false,
+        borderColor: "#3b82f6",
+        backgroundColor: "#3b82f6",
+        tension: 0.4,
+        pointBackgroundColor: "#3b82f6",
+        pointBorderColor: "#ffffff",
+        pointBorderWidth: 2,
+        pointRadius: 6,
+      },
+    ],
+  };
+
+  return (
+    <div className="weather-wrapper">
+      <h1 className="title">Weather</h1>
+      <div className="input-group">
+        <input
+          type="text"
+          placeholder="Enter city name..."
+          value={city}
+          onChange={(e) => setCity(e.target.value)}
+          onKeyPress={(e) => e.key === 'Enter' && getWeather()}
+        />
+        <button onClick={getWeather}>Search</button>
+      </div>
+
+      {error && <div className="error">{error}</div>}
+
+      {weather && (
+        <div className="result">
+          <div className="weather-result-content">
+            {/* Main Weather Display */}
+            <div className="weather-main-display">
+              <div className="weather-location-info">
+                <h2>{weather.name}</h2>
+                <div className="weather-condition">{weather.description}</div>
+                <div className="weather-temp">{weather.temp}°C</div>
+                <div className="weather-date">{getCurrentDate()}</div>
+              </div>
+              <div className="weather-icon-container">
+                <img
+                  src={`https://openweathermap.org/img/wn/${weather.icon}@2x.png`}
+                  alt={weather.description}
+                />
+              </div>
+            </div>
+
+            {/* Weather Details */}
+            <div className="weather-details-section">
+              <div className="weather-details-title">Air Conditions</div>
+              <div className="weather-details-grid">
+                <div className="weather-detail-item">
+                  <div className="weather-detail-icon">🌡️</div>
+                  <div className="weather-detail-content">
+                    <div className="weather-detail-label">Real Feel</div>
+                    <div className="weather-detail-value">{weather.feelsLike}°C</div>
+                  </div>
+                </div>
+                
+                <div className="weather-detail-item">
+                  <div className="weather-detail-icon">💨</div>
+                  <div className="weather-detail-content">
+                    <div className="weather-detail-label">Wind Speed</div>
+                    <div className="weather-detail-value">{weather.windSpeed} m/s</div>
+                  </div>
+                </div>
+                
+                <div className="weather-detail-item">
+                  <div className="weather-detail-icon">💧</div>
+                  <div className="weather-detail-content">
+                    <div className="weather-detail-label">Humidity</div>
+                    <div className="weather-detail-value">{weather.humidity}%</div>
+                  </div>
+                </div>
+                
+                <div className="weather-detail-item">
+                  <div className="weather-detail-icon">👁️</div>
+                  <div className="weather-detail-content">
+                    <div className="weather-detail-label">Visibility</div>
+                    <div className="weather-detail-value">Good</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Chart Section */}
+            {forecast.labels.length > 0 && (
+              <div className="weather-chart-section">
+                <div className="weather-chart-container">
+                  <Line data={chartData} options={chartOptions} />
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 const CultivAI = () => {
   // Main app states
@@ -37,10 +240,11 @@ const CultivAI = () => {
   const [analysis, setAnalysis] = useState(null);
   const [activeNav, setActiveNav] = useState("Home");
 
-  // Weather states
-  const [city, setCity] = useState("Meerut");
-  const [weatherData, setWeatherData] = useState(null);
-  const [forecast, setForecast] = useState([]);
+  // Refs for scrolling to sections
+  const homeRef = useRef(null);
+  const aiRef = useRef(null);
+  const weatherRef = useRef(null);
+  const contactRef = useRef(null);
 
   // FAQ and other states
   const faqs = [
@@ -66,109 +270,53 @@ const CultivAI = () => {
     "mock data": "🌱 Mock Analysis: Your crops are healthy. Recommended fertilizer: NPK 20-20-20. Watering every 3 days is optimal."
   };
 
-  // Chart configuration
-  const chartOptions = {
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: {
-      legend: { display: false },
-    },
-    scales: {
-      x: {
-        grid: { color: "rgba(200,200,200,0.2)" },
-        ticks: { color: "#555", font: { size: 12, weight: "500" } },
-      },
-      y: {
-        grid: { color: "rgba(200,200,200,0.2)" },
-        ticks: { color: "#555", font: { size: 12, weight: "500" } },
-      },
-    },
-  };
-
-  // Fetch weather when city changes
-  useEffect(() => {
-    const fetchWeather = async () => {
-      try {
-        const res = await fetch(
-          `https://api.openweathermap.org/data/2.5/weather?q=${city}&appid=${API_KEY}&units=metric`
-        );
-        const data = await res.json();
-
-        const forecastRes = await fetch(
-          `https://api.openweathermap.org/data/2.5/forecast?q=${city}&appid=${API_KEY}&units=metric`
-        );
-        const forecastData = await forecastRes.json();
-
-        setWeatherData({
-          location: data.name,
-          condition: data.weather[0].main,
-          temp: Math.round(data.main.temp),
-          date: new Date().toLocaleDateString('en-US', { 
-            weekday: 'long', 
-            year: 'numeric', 
-            month: 'short', 
-            day: 'numeric' 
-          }),
-          realFeel: Math.round(data.main.feels_like),
-          wind: `${data.wind.speed} km/hr`,
-          rain: data.rain ? `${data.rain["1h"]}%` : "0%",
-          uv: 5, // OpenWeather free tier doesn't give UV, so static
-        });
-
-        const hourly = forecastData.list.slice(0, 7);
-        setForecast({
-          labels: hourly.map((h) => new Date(h.dt_txt).getHours() + ":00"),
-          data: hourly.map((h) => Math.round(h.main.temp)),
-        });
-      } catch (err) {
-        console.error("Error fetching weather:", err);
-        // Fallback to mock data if API fails
-        setWeatherData({
-          location: city,
-          condition: "Cloudy",
-          temp: 26,
-          date: new Date().toLocaleDateString('en-US', { 
-            weekday: 'long', 
-            year: 'numeric', 
-            month: 'short', 
-            day: 'numeric' 
-          }),
-          realFeel: 30,
-          wind: "0.8 km/hr",
-          rain: "2%",
-          uv: 4,
-        });
-        setForecast({
-          labels: ["Now", "22:00", "00:00", "02:00", "04:00", "06:00", "08:00"],
-          data: [26, 26, 22, 16, 20, 22, 16],
-        });
-      }
-    };
-
-    fetchWeather();
-  }, [city]);
-
-  // Chart Data
-  const chartData = {
-    labels: forecast.labels || [],
-    datasets: [
-      {
-        label: "Temperature (°C)",
-        data: forecast.data || [],
-        fill: false,
-        borderColor: "#3b82f6",
-        tension: 0.4,
-      },
-    ],
-  };
-
   // Pagination
   const start = (page - 1) * perPage;
   const pagedFaqs = faqs.slice(start, start + perPage);
 
-  // Navigation handler
-  const handleNavClick = (item) => {
+  // Smooth scroll function with better positioning
+  const scrollToSection = (ref, isHome = false) => {
+    if (isHome) {
+      // For home, scroll to the very top of the page
+      window.scrollTo({
+        top: 0,
+        behavior: 'smooth'
+      });
+    } else if (ref && ref.current) {
+      // For other sections, account for header height
+      const headerHeight = 80; // Adjust based on your header height
+      const element = ref.current;
+      const elementPosition = element.getBoundingClientRect().top + window.pageYOffset;
+      const offsetPosition = elementPosition - headerHeight;
+
+      window.scrollTo({
+        top: offsetPosition,
+        behavior: 'smooth'
+      });
+    }
+  };
+
+  // Navigation handler with smooth scrolling
+  const handleNavClick = (item, e) => {
+    e.preventDefault();
     setActiveNav(item);
+    
+    switch(item) {
+      case "Home":
+        scrollToSection(null, true); // true indicates this is home
+        break;
+      case "AI":
+        scrollToSection(aiRef);
+        break;
+      case "Weather":
+        scrollToSection(weatherRef);
+        break;
+      case "Contact us":
+        scrollToSection(contactRef);
+        break;
+      default:
+        break;
+    }
   };
 
   // File Upload Handlers
@@ -282,9 +430,9 @@ const CultivAI = () => {
             {["Home", "AI", "Weather", "Contact us", "Language"].map((item) => (
               <a
                 key={item}
-                href="/upload"
+                href="#"
                 className={`nav-item ${activeNav === item ? "active" : ""}`}
-                onClick={() => handleNavClick(item)}
+                onClick={(e) => handleNavClick(item, e)}
               >
                 {item}
               </a>
@@ -302,7 +450,8 @@ const CultivAI = () => {
 
       {/* Main Content */}
       <main className="main-content">
-        <div className="content-container">
+        {/* Home Section */}
+        <section ref={homeRef} className="content-container">
           {/* Left Side - Image / Uploaded Image */}
           <div className="image-section">
             <AnimatePresence mode="wait">
@@ -441,10 +590,10 @@ const CultivAI = () => {
               )}
             </AnimatePresence>
           </div>
-        </div>
+        </section>
 
-        {/* FarmingAssistant Section */}
-        <div className="assistant-container">
+        {/* AI Section - FarmingAssistant */}
+        <section ref={aiRef} className="assistant-container">
           <h5 className="title" style={{ fontSize: "2rem" }}>
             Ask Your Farming Question?
           </h5>
@@ -499,7 +648,8 @@ const CultivAI = () => {
           <div className="inputs">
             <div className="input-group">
               <label>Enter Your Crop Name</label>
-              <input type="text" placeholder="Type Here" />
+              <input
+               type="text" placeholder="Type Here" />
             </div>
 
             <div className="input-group">
@@ -534,7 +684,7 @@ const CultivAI = () => {
               {result}
             </motion.div>
           )}
-        </div>
+        </section>
 
         {/* Help Section */}
         <section className="help-section">
@@ -616,75 +766,14 @@ const CultivAI = () => {
           </div>
         </div>
 
-        {/* Weather Section with Dynamic API Integration */}
-        <div className="weather-container">
-          <h1 className="weather-title">Weather</h1>
-
-          {/* City Input */}
-          <div className="city-input">
-            <input
-              type="text"
-              value={city}
-              onChange={(e) => setCity(e.target.value)}
-              placeholder="Enter city..."
-            />
-            <button onClick={() => setCity(city)}>Search</button>
-          </div>
-
-          {weatherData ? (
-            <>
-              {/* Weather Card */}
-              <div className="weather-card">
-                <div className="weather-left">
-                  <p className="location">
-                    <FiMapPin /> {weatherData.location}
-                  </p>
-                  <h2>{weatherData.condition}</h2>
-                  <h1>{weatherData.temp}°C</h1>
-                  <p>{weatherData.date}</p>
-                </div>
-
-                <div className="weather-right">
-                  <FiCloud className="weather-icon" />
-                </div>
-              </div>
-
-              {/* Activities */}
-              <div className="activities">
-                <h3>Activities in your area</h3>
-                <div className="activity-cards">
-                  <img src="https://picsum.photos/150/80?1" alt="activity1" />
-                  <img src="https://picsum.photos/150/80?2" alt="activity2" />
-                  <img src="https://picsum.photos/150/80?3" alt="activity3" />
-                  <img src="https://picsum.photos/150/80?4" alt="activity4" />
-                </div>
-              </div>
-
-              {/* Forecast */}
-              <div className="forecast">
-                <h3>24-hour forecast</h3>
-                <div className="chart-container">
-                  <Line data={chartData} options={chartOptions} />
-                </div>
-              </div>
-
-              {/* Air Conditions */}
-              <div className="air-conditions">
-                <h3>Air Conditions</h3>
-                <p>🌡 Real Feel: {weatherData.realFeel}°</p>
-                <p>💨 Wind: {weatherData.wind}</p>
-                <p>🌧 Chance of Rain: {weatherData.rain}</p>
-                <p>☀️ UV Index: {weatherData.uv}</p>
-              </div>
-            </>
-          ) : (
-            <p>Loading weather...</p>
-          )}
-        </div>
+        {/* Weather Section */}
+        <section ref={weatherRef}>
+          <WeatherSection />
+        </section>
       </main>
 
-      {/* Footer Section */}
-      <footer className="footer">
+      {/* Footer Section - Contact Us */}
+      <footer ref={contactRef} className="footer">
         <div className="footer-container">
           {/* Left Side - Logo and Description */}
           <div className="footer-left">
