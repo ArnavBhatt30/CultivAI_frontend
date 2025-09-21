@@ -29,6 +29,8 @@ ChartJS.register(
   Legend
 );
 
+  // ... the rest of your App code
+
 // WeatherSection Component
 function WeatherSection() {
   const [city, setCity] = useState("");
@@ -62,6 +64,7 @@ function WeatherSection() {
         icon: data.weather[0].icon,
         country: data.sys.country,
       });
+      
 
       // Generate mock forecast data for the chart
       const mockForecastLabels = ["Today", "Tomorrow", "Day 3", "Day 4", "Day 5"];
@@ -83,6 +86,7 @@ function WeatherSection() {
       setWeather(null);
     }
   };
+  
 
   // Get current date
   const getCurrentDate = () => {
@@ -144,6 +148,7 @@ function WeatherSection() {
       },
     ],
   };
+  
 
   return (
     <div className="weather-wrapper">
@@ -233,6 +238,7 @@ function WeatherSection() {
   );
 }
 
+
 const CultivAI = () => {
   // Main app states
   const { logout } = useAuth0();
@@ -242,6 +248,13 @@ const CultivAI = () => {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysis, setAnalysis] = useState(null);
   const [activeNav, setActiveNav] = useState("Home");
+
+  // ✅ Chatbot States
+  const [messages, setMessages] = useState([
+    { role: "assistant", text: "🌱 Hello! Ask me any farming question." },
+  ]);
+  const [loading, setLoading] = useState(false);
+  const [query, setQuery] = useState("");
 
   // Refs for scrolling to sections
   const homeRef = useRef(null);
@@ -265,7 +278,6 @@ const CultivAI = () => {
   const perPage = 6;
 
   // FarmingAssistant states
-  const [query, setQuery] = useState("");
   const [result, setResult] = useState("");
   const [listening, setListening] = useState(false);
 
@@ -384,12 +396,31 @@ const CultivAI = () => {
     setIsAnalyzing(false);
   };
 
-  // FarmingAssistant Functions
-  const handleSearch = () => {
-    if (mockResponse[query.toLowerCase()]) {
-      setResult(mockResponse[query.toLowerCase()]);
-    } else {
-      setResult("No results found. Try typing 'mock data'.");
+  // ✅ Chat Handler (calls your backend)
+  const handleSearch = async () => {
+    if (!query) return;
+    const newMessage = { role: "user", text: query };
+    setMessages((prev) => [...prev, newMessage]);
+    setLoading(true);
+    try {
+      const res = await fetch("http://localhost:3001/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ messages: [...messages, newMessage] }),
+        });
+      const data = await res.json();
+      if (data.text) {
+        setMessages((prev) => [...prev, { role: "assistant", text: data.text }]);
+      }
+    } catch (err) {
+      console.error(err);
+      setMessages((prev) => [
+        ...prev,
+        { role: "assistant", text: "⚠️ Something went wrong. Try again." },
+      ]);
+    } finally {
+      setLoading(false);
+      setQuery("");
     }
   };
 
@@ -613,7 +644,7 @@ const CultivAI = () => {
           </div>
         </section>
 
-        {/* AI Section - FarmingAssistant */}
+        {/* AI Section - FarmingAssistant with Chat */}
         <section ref={aiRef} className="assistant-container">
           <h5 className="title" style={{ fontSize: "2rem" }}>
             Ask Your Farming Question?
@@ -626,86 +657,36 @@ const CultivAI = () => {
             </em>
           </p>
 
-          {/* Search Bar */}
-          <motion.div
-            className="search-bar"
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-          >
+          {/* Chat Window */}
+          <div className="chat-window">
+            {messages.map((msg, i) => (
+              <div
+                key={i}
+                className={`chat-message ${msg.role === "user" ? "user" : "assistant"}`}
+              >
+                <p style={{ whiteSpace: "pre-line" }}>{msg.text}</p>
+
+              </div>
+            ))}
+            {loading && <div className="chat-message assistant">⏳ Thinking…</div>}
+          </div>
+
+          {/* Input + Send */}
+          <div className="chat-input">
             <select className="dropdown">
-              <option>GPT 4.0</option>
-              <option>GPT 3.5</option>
+              <option>CultivAI</option>
             </select>
             <input
               type="text"
-              placeholder="Search for anything"
+              placeholder="Ask about crops, pests, etc."
               value={query}
               onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleSearch()}
             />
-            <button className="search-btn" onClick={handleSearch}>
-              Search
+            <button onClick={handleSearch} disabled={loading}>
+              {loading ? "..." : "Send"}
             </button>
-          </motion.div>
-
-          {/* OR Divider */}
-          <div className="divider">Or</div>
-
-          {/* Buttons */}
-          <div className="actions">
-            <motion.button className="action-btn" whileTap={{ scale: 0.95 }}>
-              <span className="icon">＋</span>
-            </motion.button>
-
-            <motion.button
-              className={`action-btn mic ${listening ? "listening" : ""}`}
-              onClick={handleVoice}
-              whileTap={{ scale: 0.95 }}
-            >
-              <img src="mic.png" alt="Mic" className="mic-icon" />
-            </motion.button>
           </div>
-
-
-          {/* Dropdowns */}
-          <div className="inputs">
-            <div className="input-group">
-              <label>Enter Your Crop Name</label>
-              <input
-               type="text" placeholder="Type Here" />
-            </div>
-
-            <div className="input-group">
-              <label>Location</label>
-              <select>
-                <option>Select your location</option>
-                <option>India</option>
-                <option>USA</option>
-                <option>Africa</option>
-              </select>
-            </div>
-
-            <div className="input-group">
-              <label>Growth Stage</label>
-              <select>
-                <option>Select crop growth stage</option>
-                <option>Seedling</option>
-                <option>Vegetative</option>
-                <option>Flowering</option>
-                <option>Harvest</option>
-              </select>
-            </div>
-          </div>
-
-          {/* Result Box */}
-          {result && (
-            <motion.div
-              className="result-box"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-            >
-              {result}
-            </motion.div>
-          )}
         </section>
 
         {/* Help Section */}
