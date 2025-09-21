@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
-import './App.css';
 import cropImage from './homepage.png';
 import { motion, AnimatePresence } from "framer-motion";
 import { MdHeadsetMic, MdChat, MdEmail } from "react-icons/md";
-import { FiChevronDown, FiChevronUp, FiCloud, FiMapPin, FiSun, FiCloudRain } from "react-icons/fi";
-import { WiDaySunny, WiCloudy, WiRain, WiStrongWind } from "react-icons/wi";
+import { FiChevronDown, FiChevronUp} from "react-icons/fi";
+import { useAuth0 } from "@auth0/auth0-react";
+
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -16,6 +16,7 @@ import {
   Legend,
 } from 'chart.js';
 import { Line } from 'react-chartjs-2';
+import './App.css';
 
 // Register chart.js components
 ChartJS.register(
@@ -234,6 +235,8 @@ function WeatherSection() {
 
 const CultivAI = () => {
   // Main app states
+  const { logout } = useAuth0();
+  const { user } = useAuth0();
   const [isDragOver, setIsDragOver] = useState(false);
   const [uploadedImage, setUploadedImage] = useState(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -421,10 +424,17 @@ const CultivAI = () => {
       {/* Header */}
       <header className="header">
         <div className="nav-container">
-          <div className="logo">
-            <span className="logo-icon">🌱</span>
-            <span className="logo-text">CultivAI</span>
+          <div className="user-profile">
+          {/* Replace text with brand image */}
+          <img
+            src="/cultivai.png"
+            alt="CultivAI"
+            className="brand-mark"
+            width={28}
+            height={28}
+          />
           </div>
+
 
           <nav className="nav-menu">
             {["Home", "AI", "Weather", "Contact us", "Language"].map((item) => (
@@ -441,9 +451,20 @@ const CultivAI = () => {
 
           <div className="user-profile">
             <span className="user-name">CultivAI</span>
-            <div className="avatar">
-              <div className="avatar-placeholder"></div>
+            <div className="user-avatar">
+              {user?.name ? user.name.charAt(0).toUpperCase() : "?"}
             </div>
+
+            <button
+                onClick={() =>
+                  logout({
+                    returnTo: window.location.origin, // where to redirect after logout
+                  })
+                }
+                className="logout-btn"
+              >
+                Logout
+              </button>
           </div>
         </div>
       </header>
@@ -640,9 +661,10 @@ const CultivAI = () => {
               onClick={handleVoice}
               whileTap={{ scale: 0.95 }}
             >
-              <span className="icon">🎙️</span>
+              <img src="mic.png" alt="Mic" className="mic-icon" />
             </motion.button>
           </div>
+
 
           {/* Dropdowns */}
           <div className="inputs">
