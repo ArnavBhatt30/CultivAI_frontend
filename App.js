@@ -1,9 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import cropImage from './homepage.png';
+import { signOut } from "aws-amplify/auth";
+import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { MdHeadsetMic, MdChat, MdEmail } from "react-icons/md";
-import { FiChevronDown, FiChevronUp} from "react-icons/fi";
-import { useAuth0 } from "@auth0/auth0-react";
+import { MdHeadsetMic, MdChat, MdEmail, MdMic, MdMicOff } from "react-icons/md";
+import { FiChevronDown, FiChevronUp, FiSun, FiMoon, FiCamera } from "react-icons/fi";
+import Lenis from '@studio-freight/lenis';
+import ReactMarkdown from "react-markdown";
 
 import {
   Chart as ChartJS,
@@ -29,7 +32,163 @@ ChartJS.register(
   Legend
 );
 
-  // ... the rest of your App code
+const diseaseCures = {
+  "Anthracnose": [
+    "Apply fungicides like chlorothalonil or mancozeb.",
+    "Remove and destroy infected plant debris.",
+    "Ensure good air circulation and avoid overhead irrigation."
+  ],
+  "Bacterial blight": [
+    "Spray copper-based bactericides.",
+    "Avoid overhead irrigation to reduce moisture on leaves.",
+    "Use disease-free seeds and resistant varieties."
+  ],
+  "Brown spot": [
+    "Use fungicides like tricyclazole or carbendazim.",
+    "Maintain proper field drainage.",
+    "Apply balanced fertilizers (avoid excess nitrogen)."
+  ],
+  "Fall armyworm": [
+    "Handpick and destroy egg masses and larvae.",
+    "Use biological control like Trichogramma wasps.",
+    "Apply insecticides such as spinosad or emamectin benzoate."
+  ],
+  "Green mite": [
+    "Spray acaricides (abamectin or dicofol).",
+    "Encourage natural predators like lady beetles.",
+    "Keep plants well-watered to reduce mite stress."
+  ],
+  "Gumosis": [
+    "Scrape affected bark and apply fungicidal paste.",
+    "Improve field drainage to reduce root stress.",
+    "Avoid injuries to tree bark during pruning."
+  ],
+  "Healthy": [
+    "No cure needed – crop is healthy.",
+    "Maintain good irrigation and fertilization practices.",
+    "Regularly monitor crops to detect early disease signs."
+  ],
+  "Leaf blight": [
+    "Use resistant crop varieties when available.",
+    "Spray copper-based fungicides or mancozeb.",
+    "Rotate crops and avoid overcrowding."
+  ],
+  "Leaf curl": [
+    "Control vector insects (like whiteflies or aphids).",
+    "Apply neem oil or systemic insecticides.",
+    "Remove and destroy infected leaves."
+  ],
+  "Leaf miner": [
+    "Remove and destroy mined leaves.",
+    "Use neem-based sprays or spinosad.",
+    "Introduce parasitoid wasps for biological control."
+  ],
+  "Leaf spot": [
+    "Apply fungicides like mancozeb or chlorothalonil.",
+    "Avoid overhead watering to reduce leaf wetness.",
+    "Remove and destroy infected leaves."
+  ],
+  "Mosaic": [
+    "Control insect vectors such as aphids or whiteflies.",
+    "Use virus-free planting material.",
+    "Remove and destroy infected plants immediately."
+  ],
+  "Red rust": [
+    "Spray sulfur-based fungicides at early stages.",
+    "Prune and destroy infected leaves.",
+    "Maintain field hygiene to reduce spread."
+  ],
+  "Septoria leaf spot": [
+    "Apply fungicides containing chlorothalonil or copper.",
+    "Space plants properly to reduce humidity.",
+    "Remove and destroy infected leaves."
+  ],
+  "Streak virus": [
+    "Use resistant or tolerant crop varieties.",
+    "Control insect vectors (mainly aphids).",
+    "Remove infected plants to reduce spread."
+  ],
+  "Verticulium wilt": [
+    "Rotate crops with non-host species.",
+    "Apply soil solarization before planting.",
+    "Use resistant plant varieties if available."
+  ]
+};
+
+// Camera Modal Component
+// Camera Modal Component (Updated without switch camera)
+const CameraModal = ({ isOpen, onClose, onCapture }) => {
+  const videoRef = useRef(null);
+  const [stream, setStream] = useState(null);
+
+  useEffect(() => {
+    if (isOpen) {
+      startCamera();
+    } else {
+      stopCamera();
+    }
+    return () => stopCamera();
+  }, [isOpen]);
+
+  const startCamera = async () => {
+    try {
+      const mediaStream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'environment' } // default to back camera
+      });
+      if (videoRef.current) {
+        videoRef.current.srcObject = mediaStream;
+      }
+      setStream(mediaStream);
+    } catch (err) {
+      console.error("Error accessing camera:", err);
+      alert("Unable to access camera. Please check permissions.");
+    }
+  };
+
+  const stopCamera = () => {
+    if (stream) {
+      stream.getTracks().forEach(track => track.stop());
+      setStream(null);
+    }
+  };
+
+  const capturePhoto = () => {
+    const video = videoRef.current;
+    const canvas = document.createElement("canvas");
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext("2d");
+    ctx.drawImage(video, 0, 0);
+
+    canvas.toBlob((blob) => {
+      const file = new File([blob], "camera-photo.jpg", { type: "image/jpeg" });
+      onCapture(file);
+      onClose();
+    }, "image/jpeg");
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="camera-modal-overlay" onClick={onClose}>
+      <div className="camera-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="camera-header">
+          <h3>Take a Photo</h3>
+          <button className="close-btn" onClick={onClose}>✕</button>
+        </div>
+        <video ref={videoRef} autoPlay playsInline className="camera-video"></video>
+        <div className="camera-controls">
+          <button className="capture-btn" onClick={capturePhoto}>
+            📸 Capture
+          </button>
+          <button className="cancel-btn" onClick={onClose}>
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 // WeatherSection Component
 function WeatherSection() {
@@ -105,7 +264,6 @@ function WeatherSection() {
       title: {
         display: true,
         text: '5-Day Temperature Forecast',
-        color: '#333',
         font: {
           size: 16,
           weight: 'bold'
@@ -115,12 +273,11 @@ function WeatherSection() {
     scales: {
       x: {
         grid: { color: "rgba(200,200,200,0.2)" },
-        ticks: { color: "#555", font: { size: 12, weight: "500" } },
+        ticks: { font: { size: 12, weight: "500" } },
       },
       y: {
         grid: { color: "rgba(200,200,200,0.2)" },
         ticks: { 
-          color: "#555", 
           font: { size: 12, weight: "500" },
           callback: function(value) {
             return value + '°C';
@@ -241,13 +398,20 @@ function WeatherSection() {
 
 const CultivAI = () => {
   // Main app states
-  const { logout } = useAuth0();
-  const { user } = useAuth0();
   const [isDragOver, setIsDragOver] = useState(false);
+  const [showCamera, setShowCamera] = useState(false);
+  const recognitionRef = useRef(null);
   const [uploadedImage, setUploadedImage] = useState(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysis, setAnalysis] = useState(null);
   const [activeNav, setActiveNav] = useState("Home");
+  const [activePopup, setActivePopup] = useState(null);
+
+  const closePopup = () => setActivePopup(null);
+  // Add theme state
+  const [theme, setTheme] = useState('light');
+  const [isDarkMode, setIsDarkMode] = useState(false);
+
 
   // ✅ Chatbot States
   const [messages, setMessages] = useState([
@@ -255,23 +419,137 @@ const CultivAI = () => {
   ]);
   const [loading, setLoading] = useState(false);
   const [query, setQuery] = useState("");
+  const [listening, setListening] = useState(false);
+  const navigate = useNavigate();
+  const handleLogout = async () => {
+  await signOut();                  // clears tokens from Cognito + localStorage
+  window.location.href = "/login";  // full reload to reset state
+  };
 
   // Refs for scrolling to sections
+    // Refs for scrolling to sections
   const homeRef = useRef(null);
   const aiRef = useRef(null);
   const weatherRef = useRef(null);
   const contactRef = useRef(null);
+  const lenisRef = useRef(null);
+
+  // Initialize Lenis for smooth scrolling
+  useEffect(() => {
+    // Initialize Lenis smooth scrolling
+    lenisRef.current = new Lenis({
+      duration: 1.2,
+      easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)), // https://www.desmos.com/calculator/brs54l4xou
+      direction: 'vertical',
+      gestureDirection: 'vertical',
+      smooth: true,
+      mouseMultiplier: 1,
+      smoothTouch: false,
+      touchMultiplier: 2,
+      infinite: false,
+    });
+
+    // Connect lenis to requestAnimationFrame
+    function raf(time) {
+      lenisRef.current.raf(time);
+      requestAnimationFrame(raf);
+    }
+    requestAnimationFrame(raf);
+
+    // Cleanup function
+    return () => {
+      lenisRef.current.destroy();
+    };
+  }, []);
+
+  // Load theme from localStorage if available
+  useEffect(() => {
+    const savedTheme = localStorage.getItem('theme');
+    if (savedTheme) {
+      setTheme(savedTheme);
+    } else {
+      // Check user's system preference
+      const prefersDarkMode = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+      if (prefersDarkMode) {
+        setTheme('dark');
+      }
+    }
+  }, []);
+
+  // Apply theme to document
+  useEffect(() => {
+    document.body.className = theme;
+    localStorage.setItem('theme', theme);
+    
+    // Update Chart.js colors based on theme
+    if (ChartJS.defaults) {
+      if (theme === 'dark') {
+        ChartJS.defaults.color = '#e0e0e0';
+        ChartJS.defaults.scale.grid.color = 'rgba(255, 255, 255, 0.1)';
+      } else {
+        ChartJS.defaults.color = '#666666';
+        ChartJS.defaults.scale.grid.color = 'rgba(0, 0, 0, 0.1)';
+      }
+    }
+  }, [theme]);
+
+  // Toggle theme function
+  const toggleTheme = () => {
+    const newTheme = theme === 'light' ? 'dark' : 'light';
+    setTheme(newTheme);
+  };
 
   // FAQ and other states
   const faqs = [
-    { q: "What are the key measurements I should take to determine my size?", a: "Measure your bust, waist, and hips for the most accurate sizing." },
-    { q: "Is there a size chart available for reference?", a: "Yes, you can find our detailed size chart on the product page." },
-    { q: "How do different brands compare in terms of sizing?", a: "Sizes may vary slightly across brands, so always check the chart." },
-    { q: "What should I do if I'm between sizes?", a: "We recommend choosing the larger size for comfort." },
-    { q: "Can I return or exchange if the size doesn't fit?", a: "Yes, you can exchange or return within 30 days." },
-    { q: "What materials might affect the fit and feel of the clothing?", a: "Stretch fabrics like spandex provide more flexibility." },
-    { q: "Are there customer reviews that mention sizing accuracy?", a: "Yes, customer reviews often provide insights into fit accuracy." },
-  ];
+  // Page 1
+  { q: "How does CultivAI analyze crop images?", a: "You can upload a leaf or pest photo, and our AI model will detect if it's healthy or affected by a disease or pest." },
+  { q: "What kind of crops or diseases can CultivAI identify?", a: "Our model currently recognizes 18 common crop diseases and pests such as Leaf Blight, Mosaic, Anthracnose, Fall Armyworm, and more." },
+  { q: "Do I need high-quality images for analysis?", a: "Clear photos of the leaf or pest work best. Avoid blurry or very dark images for accurate results." },
+  { q: "Can CultivAI give solutions for detected diseases?", a: "Yes, along with the disease name, we provide tailored recommendations for treatment and preventive measures." },
+  { q: "Does CultivAI support local languages?", a: "We're building multilingual support so farmers can interact in their preferred language." },
+  { q: "Can I also get weather updates through CultivAI?", a: "Yes, our weather section provides real-time weather info and a 5‑day forecast to help you plan farming activities." },
+
+  // Page 2
+  { q: "Is my data safe when I upload images?", a: "Yes, your images are only used for analysis and are not shared with anyone." },
+  { q: "What crops does CultivAI currently support?", a: "Currently we focus on rice, wheat, maize, tomato, potato, and several vegetables, with more being added soon." },
+  { q: "Does CultivAI work offline?", a: "An internet connection is required for analysis and updates, but offline-ready versions are in development." },
+  { q: "Can I get fertilizer recommendations?", a: "Yes, based on detected crop issues, CultivAI provides fertilizer and soil management suggestions." },
+  { q: "Does CultivAI only identify diseases?", a: "No, it also gives pest control, nutrient management, irrigation alerts, and preventive guidance." },
+  { q: "How accurate is CultivAI?", a: "Our crop disease detection achieves over 90% accuracy with clear images from the farm." },
+
+  // Page 3
+  { q: "Can I share my reports with others?", a: "Yes, download or share recommendations with extension workers or other farmers." },
+  { q: "Is CultivAI free to use?", a: "Yes, basic analysis and weather are free. Premium features with advanced analytics will launch later." },
+  { q: "How can CultivAI help reduce pesticide use?", a: "By detecting early, it recommends targeted, minimal, and safe use of chemicals, plus organic alternatives." },
+  { q: "Can it detect nutrient deficiencies?", a: "Yes, CultivAI can identify deficiencies like nitrogen, potassium, and magnesium based on leaf symptoms." },
+  { q: "How does CultivAI support sustainable farming?", a: "By suggesting organic options, balanced fertilizer use, and integrated pest management practices." },
+  { q: "Can CultivAI work on low-end smartphones?", a: "Yes, the app is optimized for low data usage and works on most Android phones used in rural areas." },
+
+  // Page 4
+  { q: "Does CultivAI integrate with government schemes?", a: "Future plans include linking with local advisories and subsidy programs for seamless farmer access." },
+  { q: "Can it help me decide irrigation schedules?", a: "Yes, the weather forecasts and soil health integration help in planning optimal irrigation." },
+  { q: "What should I do if my crop is not listed?", a: "Send feedback via the app. We’re continuously training CultivAI on new crops and diseases." },
+  { q: "Does CultivAI work at night?", a: "Yes, dark images can still be uploaded, but best results come from daylight or clear lighting." },
+  { q: "Does it detect multiple problems at once?", a: "Yes, if multiple issues appear together (like pest + nutrient deficiency), you’ll get combination recommendations." },
+  { q: "Can CultivAI help in crop yield prediction?", a: "Future updates will include AI-driven estimates for expected yield based on plant health and weather." },
+
+  // Page 5
+  { q: "Is there voice input for illiterate farmers?", a: "Yes, farmers can ask questions in their local language using the microphone feature." },
+  { q: "Can CultivAI recognize weeds?", a: "We are expanding the dataset to identify major weeds affecting cereal and vegetable crops." },
+  { q: "How does image analysis work with spotty internet?", a: "Images upload in compressed form; analysis resumes when the network is stable." },
+  { q: "Does CultivAI help in market price prediction?", a: "Market price insights are planned for integration in future updates." },
+  { q: "Does CultivAI integrate with drones?", a: "In the pipeline: drone-captured images for large field scanning." },
+  { q: "How does CultivAI update its knowledge?", a: "The model is retrained frequently with new field data and verified extension guidelines." },
+
+  // Page 6
+  { q: "What devices are supported for CultivAI?", a: "Any modern browser, Android phone, or tablet. iOS support is in development." },
+  { q: "Can CultivAI give planting advice?", a: "Yes, we provide guidelines for planting time, seed treatment, and land preparation." },
+  { q: "How does it support horticulture crops?", a: "We’re training it to include fruit and vegetable diseases like blight in tomato and rust in beans." },
+  { q: "Are the pesticide recommendations safe?", a: "Yes, pesticides suggested follow government-approved safe use practices." },
+  { q: "How quickly can farmers get results?", a: "Results are generated within seconds after uploading photos." },
+  { q: "Can CultivAI predict pest outbreaks?", a: "Integration with weather and monitoring data will allow early pest outbreak alerts soon." }
+];
+
 
   const [openIndex, setOpenIndex] = useState(null);
   const [page, setPage] = useState(1);
@@ -279,7 +557,6 @@ const CultivAI = () => {
 
   // FarmingAssistant states
   const [result, setResult] = useState("");
-  const [listening, setListening] = useState(false);
 
   const mockResponse = {
     "mock data": "🌱 Mock Analysis: Your crops are healthy. Recommended fertilizer: NPK 20-20-20. Watering every 3 days is optimal."
@@ -289,13 +566,13 @@ const CultivAI = () => {
   const start = (page - 1) * perPage;
   const pagedFaqs = faqs.slice(start, start + perPage);
 
-  // Smooth scroll function with better positioning
+  // Smooth scroll function using Lenis
   const scrollToSection = (ref, isHome = false) => {
     if (isHome) {
       // For home, scroll to the very top of the page
-      window.scrollTo({
-        top: 0,
-        behavior: 'smooth'
+      lenisRef.current.scrollTo(0, {
+        duration: 1.2,
+        easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t))
       });
     } else if (ref && ref.current) {
       // For other sections, account for header height
@@ -304,9 +581,9 @@ const CultivAI = () => {
       const elementPosition = element.getBoundingClientRect().top + window.pageYOffset;
       const offsetPosition = elementPosition - headerHeight;
 
-      window.scrollTo({
-        top: offsetPosition,
-        behavior: 'smooth'
+      lenisRef.current.scrollTo(offsetPosition, {
+        duration: 1.2,
+        easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t))
       });
     }
   };
@@ -372,100 +649,177 @@ const CultivAI = () => {
     }
   };
 
-  const performAnalysis = () => {
-    setIsAnalyzing(true);
-    setTimeout(() => {
-      setAnalysis({
-        crop: "Sugarcane",
-        health: "Good",
-        issues: ["Slight nutrient deficiency in lower leaves"],
-        recommendations: [
-          "Apply nitrogen-rich fertilizer",
-          "Increase watering frequency",
-          "Monitor for pest activity in next 2 weeks"
-        ],
-        confidence: "94%"
-      });
-      setIsAnalyzing(false);
-    }, 1000);
+  // Camera capture handler
+  const handleCameraCapture = (file) => {
+    handleFileUpload(file);
+    setShowCamera(false);
   };
+
+  const performAnalysis = async () => {
+  if (!uploadedImage) return;
+
+  try {
+    setIsAnalyzing(true);
+    const formData = new FormData();
+    const blob = await fetch(uploadedImage).then(r => r.blob()); // convert base64 to blob
+    formData.append("file", blob, "crop.jpg"); // adjust "file" to your API param name
+
+    const res = await fetch("http://127.0.0.1:8000/predict", { // ✅ replace with your Swagger API endpoint
+      method: "POST",
+      body: formData,
+    });
+
+    if (!res.ok) throw new Error("API request failed");
+    const data = await res.json();
+
+    // Adapt this depending on your backend response schema
+    // Capitalize disease name for matching
+          let detectedDisease = data.crop_disease
+      ? data.crop_disease
+      : "Unknown";
+
+          let extraRecs = diseaseCures[detectedDisease] || [];
+
+          setAnalysis({
+            crop: detectedDisease,
+            health: data.health || "Unknown",
+            confidence: data.confidence || "N/A",
+            issues: data.issues || [],
+            recommendations: [...(data.recommendations || []), ...extraRecs],
+          });
+
+
+
+
+      } catch (err) {
+        console.error("Error calling AI API:", err);
+        setAnalysis({
+          crop: "Error",
+          health: "Error",
+          issues: ["Could not analyze image"],
+          recommendations: ["Try again later"],
+          confidence: "0%",
+        });
+      } finally {
+        setIsAnalyzing(false);
+      }
+    };
+
 
   const resetUpload = () => {
     setUploadedImage(null);
     setAnalysis(null);
     setIsAnalyzing(false);
   };
+  useEffect(() => {
+  const SpeechRecognition =
+    window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRecognition) {
+    alert("Voice recognition not supported in this browser.");
+    return;
+  }
+
+  const recognition = new SpeechRecognition();
+  recognition.lang = "en-US";
+  recognition.continuous = true;     // try to stay alive
+  recognition.interimResults = true;
+
+  recognition.onresult = (event) => {
+    let finalTranscript = "";
+    for (let i = event.resultIndex; i < event.results.length; i++) {
+      if (event.results[i].isFinal) {
+        finalTranscript += event.results[i][0].transcript + " ";
+      }
+    }
+    if (finalTranscript) setQuery((prev) => prev + finalTranscript);
+  };
+
+  recognition.onerror = (e) => {
+    console.error("Speech recognition error:", e.error);
+    setListening(false);
+  };
+
+  recognition.onend = () => {
+    // 🔑 If you didn't explicitly stop, restart it
+    if (listening) {
+      recognition.start();
+    } else {
+      setListening(false);
+    }
+  };
+
+  recognitionRef.current = recognition;
+}, [listening]); // depend on listening
 
   // ✅ Chat Handler (calls your backend)
-  const handleSearch = async () => {
-    if (!query) return;
-    const newMessage = { role: "user", text: query };
-    setMessages((prev) => [...prev, newMessage]);
-    setLoading(true);
-    try {
-      const res = await fetch("http://localhost:3001/api/chat", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ messages: [...messages, newMessage] }),
-        });
-      const data = await res.json();
-      if (data.text) {
-        setMessages((prev) => [...prev, { role: "assistant", text: data.text }]);
-      }
-    } catch (err) {
-      console.error(err);
-      setMessages((prev) => [
-        ...prev,
-        { role: "assistant", text: "⚠️ Something went wrong. Try again." },
-      ]);
-    } finally {
-      setLoading(false);
-      setQuery("");
-    }
-  };
+  // Enhanced Voice Recognition for Chat with real-time transcription
+      const handleVoice = () => {
+        if (!recognitionRef.current) return;
 
-  const handleVoice = () => {
-    if (!("webkitSpeechRecognition" in window)) {
-      alert("Voice recognition not supported in this browser.");
-      return;
-    }
-
-    const recognition = new window.webkitSpeechRecognition();
-    recognition.lang = "en-US";
-    recognition.start();
-    setListening(true);
-
-    recognition.onresult = (event) => {
-      const voiceQuery = event.results[0][0].transcript;
-      setQuery(voiceQuery);
-      if (mockResponse[voiceQuery.toLowerCase()]) {
-        setResult(mockResponse[voiceQuery.toLowerCase()]);
-      } else {
-        setResult(`Heard: "${voiceQuery}" but no mock analysis found.`);
-      }
+        if (!listening) {
+          recognitionRef.current.start();
+          setListening(true);
+        } else {
+          recognitionRef.current.stop();
+          setListening(false);
+        }
     };
 
-    recognition.onend = () => {
-      setListening(false);
-    };
-  };
+// Update the handleSearch function to work with both voice and text
+      const handleSearch = async () => {
+        if (!query.trim()) return;
+
+        // Push user message
+        const newMessage = { role: "user", text: query.trim() };
+        setMessages((prev) => [...prev, newMessage]);
+        setLoading(true);
+        setQuery("");
+
+        try {
+          const res = await fetch("http://localhost:3001/api/chat", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ messages: [...messages, newMessage] }),
+          });
+
+          const data = await res.json();
+          console.log("👉 Response from backend:", data);
+
+          if (data.bullets) {
+            // Store bullets instead of text
+            setMessages((prev) => [...prev, { role: "assistant", bullets: data.bullets }]);
+          } else {
+            setMessages((prev) => [...prev, { role: "assistant", text: "⚠️ No response" }]);
+          }
+        } catch (err) {
+          console.error("❌ Error fetching:", err);
+          setMessages((prev) => [...prev, { role: "assistant", text: "⚠️ Something went wrong." }]);
+        } finally {
+          setLoading(false);
+        }
+      };
 
   return (
-    <div className="cultivai-container">
+    <div className={`cultivai-container ${theme}`}>
+      {/* Camera Modal */}
+      <CameraModal 
+        isOpen={showCamera}
+        onClose={() => setShowCamera(false)}
+        onCapture={handleCameraCapture}
+      />
+
       {/* Header */}
       <header className="header">
         <div className="nav-container">
           <div className="user-profile">
-          {/* Replace text with brand image */}
           <img
-            src="/cultivai.png"
+            src={theme === 'dark' ? "/darkmode.png" : "/lightmode.png"}
             alt="CultivAI"
             className="brand-mark"
             width={28}
             height={28}
           />
-          </div>
-
+        </div>
 
           <nav className="nav-menu">
             {["Home", "AI", "Weather", "Contact us", "Language"].map((item) => (
@@ -481,21 +835,24 @@ const CultivAI = () => {
           </nav>
 
           <div className="user-profile">
+            {/* Theme Toggle Button */}
+            <button 
+              onClick={toggleTheme} 
+              className="theme-toggle-btn"
+              aria-label={theme === 'light' ? 'Switch to dark theme' : 'Switch to light theme'}
+            >
+              {theme === 'light' ? <FiMoon /> : <FiSun />}
+            </button>
+            
             <span className="user-name">CultivAI</span>
-            <div className="user-avatar">
-              {user?.name ? user.name.charAt(0).toUpperCase() : "?"}
-            </div>
 
-            <button
-                onClick={() =>
-                  logout({
-                    returnTo: window.location.origin, // where to redirect after logout
-                  })
-                }
-                className="logout-btn"
-              >
-                Logout
-              </button>
+
+           <button
+              onClick={handleLogout}   // <-- Call the logout function here
+              className="logout-btn"
+            >
+              Logout
+            </button>
           </div>
         </div>
       </header>
@@ -552,8 +909,13 @@ const CultivAI = () => {
                     Upload photos of your crops, pests, or field conditions to get
                     quick and reliable farming advice. Our AI system analyzes your
                     files and provides solutions tailored to your crop, location,
-                    and season—helping you take the right action at the right time
+                    and season—helping you take the right action at the right time.
                   </p>
+                  <div className="disclaimer">
+                    Currently our model recognizes only a few common leaf diseases; 
+                    we’ll keep expanding its knowledge.Please upload a clear photo of a 
+                    single leaf for the best results.
+                  </div>
 
                   <div
                     className={`upload-area ${isDragOver ? "drag-over" : ""}`}
@@ -566,12 +928,28 @@ const CultivAI = () => {
                         Select a file
                       </label>
                       <span className="or-text">or</span>
+                      <button 
+                        className="camera-btn" 
+                        onClick={() => setShowCamera(true)}
+                      >
+                        <FiCamera /> Take Photo
+                      </button>
+                      <span className="or-text">or</span>
                       <span className="drag-text">Drag and drop a file here</span>
                     </div>
                     <input
                       type="file"
                       id="file-input"
                       accept="image/*"
+                      onChange={handleFileSelect}
+                      style={{ display: "none" }}
+                    />
+                    {/* Mobile camera input fallback */}
+                    <input
+                      type="file"
+                      id="camera-input"
+                      accept="image/*"
+                      capture="environment"
                       onChange={handleFileSelect}
                       style={{ display: "none" }}
                     />
@@ -604,7 +982,7 @@ const CultivAI = () => {
                       <h3>Analysis Results</h3>
                       <div className="analysis-grid">
                         <div className="analysis-card">
-                          <div className="analysis-card-label">Crop</div>
+                          <div className="analysis-card-label">Disease</div>
                           <div className="analysis-card-value">{analysis.crop}</div>
                         </div>
                         <div className="analysis-card">
@@ -612,7 +990,7 @@ const CultivAI = () => {
                           <div className="analysis-card-value health-good">{analysis.health}</div>
                         </div>
                         <div className="analysis-card">
-                          <div className="analysis-card-label">Confidence</div>
+                          <div className="analysis-card-label">Accuracy</div>
                           <div className="analysis-card-value confidence-high">{analysis.confidence}</div>
                         </div>
                       </div>
@@ -652,67 +1030,133 @@ const CultivAI = () => {
 
           <p className="subtitle" lang="en">
             <em>
-              Type your question, speak in your own language, or upload a photo of your crop. 
-              Our AI will instantly give you clear, reliable farming advice—tailored to your crop, location, and season.
+              Type your question or click the microphone to speak. You can use both voice and typing together!
             </em>
           </p>
 
+          
           {/* Chat Window */}
-          <div className="chat-window">
-            {messages.map((msg, i) => (
-              <div
-                key={i}
-                className={`chat-message ${msg.role === "user" ? "user" : "assistant"}`}
-              >
-                <p style={{ whiteSpace: "pre-line" }}>{msg.text}</p>
-
+            <div className="chat-window">
+              {messages.map((msg, i) => (
+                <div
+                  key={i}
+                  className={`chat-message ${msg.role === "user" ? "user" : "assistant"}`}
+                >
+                  <div className="ai-response">
+                    {msg.bullets ? (
+                      <ul className="ai-bullets">
+                        {msg.bullets.map((b, j) => (
+                          <li key={j}>
+                            <ReactMarkdown>{b}</ReactMarkdown>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <ReactMarkdown>{msg.text}</ReactMarkdown>
+                    )}
+                  </div>
+                </div>
+              ))}
+              {loading && <div className="chat-message assistant">⏳ Thinking…</div>}
+            </div>
+          {/* Input + Send + Voice */}
+          <div className="chat-input-wrapper">
+            <div className="chat-input">
+              <select className="dropdown">
+                <option>CultivAI</option>
+              </select>
+              <div className="input-with-voice">
+                <input
+                  type="text"
+                  placeholder="Ask about crops, pests, or speak..."
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && handleSearch()}
+                  className={listening ? "listening" : ""}
+                />
+                <button 
+                  onClick={handleVoice} 
+                  className={`voice-btn ${listening ? 'listening' : ''}`}
+                  disabled={loading}
+                  title={listening ? "Stop recording" : "Start voice input"}
+                >
+                  {listening ? <MdMicOff /> : <MdMic />}
+                </button>
               </div>
-            ))}
-            {loading && <div className="chat-message assistant">⏳ Thinking…</div>}
-          </div>
-
-          {/* Input + Send */}
-          <div className="chat-input">
-            <select className="dropdown">
-              <option>CultivAI</option>
-            </select>
-            <input
-              type="text"
-              placeholder="Ask about crops, pests, etc."
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-            />
-            <button onClick={handleSearch} disabled={loading}>
-              {loading ? "..." : "Send"}
-            </button>
+              <button 
+                onClick={handleSearch} 
+                disabled={loading || !query.trim()}
+                className="send-btn"
+              >
+                {loading ? "..." : "Send"}
+              </button>
+            </div>
+            {listening && (
+              <div className="voice-indicator">
+                <span className="pulse-dot"></span>
+                <span>Listening... Speak now</span>
+              </div>
+            )}
           </div>
         </section>
 
         {/* Help Section */}
-        <section className="help-section">
+            <section className="help-section">
           <h2>How Can We Help?</h2>
           <p className="help-subtitle">
-            Whether it's a question about your order, returns, sizing, or just fashion talk — we've got you covered. <br />
-            Type in your query below and we'll point you in the right direction.
+            Whether it's a question about crop care, pest control, soil health, or weather updates — we've got you covered. <br />
+            Type your farming query below and CultivAI will guide you with the right advice at the right time.
           </p>
 
           <div className="help-search">
-            <input type="text" placeholder="Search for anything" />
+            <input type="text" placeholder="Search for anything (Work in Progress) " />
             <button className="help-search-btn">Search</button>
           </div>
 
           <div className="help-icons">
-            <div className="help-icon-box">
+            <div className="help-icon-box" onClick={() => setActivePopup("call")}>
               <MdHeadsetMic className="help-icon" />
             </div>
-            <div className="help-icon-box">
+            <div className="help-icon-box" onClick={() => setActivePopup("chat")}>
               <MdChat className="help-icon" />
             </div>
-            <div className="help-icon-box">
+            <div className="help-icon-box" onClick={() => setActivePopup("email")}>
               <MdEmail className="help-icon" />
             </div>
           </div>
+
+          {/* --- Popups --- */}
+          {activePopup && (
+            <div className="popup-overlay" onClick={closePopup}>
+              <div className="popup-box" onClick={(e) => e.stopPropagation()}>
+                {activePopup === "call" && (
+                  <p>
+                    📞 Call us: <a href="tel:+1234567890">+1 234 567 890</a>
+                  </p>
+                )}
+                {activePopup === "chat" && (
+                  <p>
+                    💬 Message us on 
+                    <a href="https://wa.me/1234567890" target="_blank" rel="noreferrer">
+                       WhatsApp
+                    </a>
+                  </p>
+                )}
+                {activePopup === "email" && (
+                  <p>
+                    📧 Email us:{" "}
+                    <a
+                      href="https://mail.google.com/mail/?view=cm&fs=1&to=cultivai676@gmail.com&su=Support%20Request&body=Hello%20CultivAI%20Team,"
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      Open Gmail
+                    </a>
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
         </section>
 
         {/* FAQ Section */}
@@ -893,5 +1337,4 @@ const CultivAI = () => {
     </div>
   );
 };
-
 export default CultivAI;
