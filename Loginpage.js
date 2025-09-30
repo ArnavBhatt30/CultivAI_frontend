@@ -1,145 +1,136 @@
+// src/LoginPage.js
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { signIn, signInWithRedirect } from 'aws-amplify/auth';
 import { Eye, EyeOff, Mail, Lock } from 'lucide-react';
-import { useAuth0 } from "@auth0/auth0-react";
 import './Loginpage.css';
 
 const LoginPage = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [rememberMe, setRememberMe] = useState(false);
+  const [error, setError] = useState('');
+  const navigate = useNavigate();
 
-  const { loginWithRedirect, logout, isAuthenticated, user } = useAuth0();
-
-  const handleSubmit = (e) => {
+  // Email/Password Login
+  const handleEmailSignIn = async (e) => {
     e.preventDefault();
-    console.log('Manual login submitted:', { email, password, rememberMe });
+    setError('');
+    try {
+      await signIn({ username: email, password });
+      navigate("/dashboard"); // ✅ redirect once logged in
+    } catch (err) {
+      if (err.name === "UserAlreadyAuthenticatedException") {
+        navigate("/dashboard"); // already logged in, just redirect
+      } else {
+        setError(err.message);
+      }
+    }
+  };
+
+  // Google Federated Login
+  const handleGoogleSignIn = async () => {
+    try {
+      await signInWithRedirect({ provider: "Google" });
+    } catch (err) {
+      setError(err.message);
+    }
   };
 
   return (
     <div className="login-container">
       <div className="login-card">
-        {/* Left Side - Brand */}
+        
+        {/* ✅ Left Side – Brand */}
         <div className="brand-section">
           <div className="brand-content">
+            <span className="logo-text">CultivAI</span>
             <div className="logo">
-              <span className="logo-icon">🌱</span>
-              <span className="logo-text">CultivAI</span>
+              <img src="/logomain.png" alt="CultivAI Logo" className="logo-icon" />
+              
             </div>
-            
             <div className="brand-text">
-              <h1>Smart Farming <br/>Smarter Future</h1>
-              <p>Get AI-powered insights for crops, pests, and soil health. CultivAI helps farmers boost productivity, reduce risks, and grow sustainably.</p>
+              <h1>Smart Farming <br/> Smarter Future</h1>
+              <p>
+                Get AI-powered insights for crops, pests, and soil health.  
+                CultivAI helps farmers boost productivity, reduce risks, and grow sustainably.
+              </p>
             </div>
           </div>
         </div>
 
-        {/* Right Side - Login Form */}
+        {/* ✅ Right Side – Login Form */}
         <div className="form-section">
-          <div className="form-content">
+          <div className="form-content route-animate">
             <div className="form-header">
               <h2>Sign in</h2>
               <p>
-                If you don't have an account register<br />
-                You can <a href="#" className="register-link">Register here !</a>
+                Don't have an account?{" "}
+                <span
+                  onClick={() => navigate("/register")}
+                  className="register-link"
+                  style={{ cursor: "pointer" }}
+                >
+                  Register here!
+                </span>
               </p>
             </div>
 
-            {/* If user is logged in, show greeting */}
-            {isAuthenticated ? (
-              <div>
-                <h3>Welcome, {user.name}</h3>
-                <button onClick={() => logout({ returnTo: window.location.origin })}>
-                  Logout
-                </button>
+            <form onSubmit={handleEmailSignIn} className="login-form">
+              {/* Email */}
+              <div className="form-group">
+                <label>Email</label>
+                <div className="input-wrapper">
+                  <Mail className="input-icon" size={20} />
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="Enter your email"
+                    required
+                  />
+                </div>
               </div>
-            ) : (
-              <form onSubmit={handleSubmit} className="login-form">
-                <div className="form-group">
-                  <label htmlFor="email">Email</label>
-                  <div className="input-wrapper">
-                    <Mail className="input-icon" size={20} />
-                    <input
-                      type="email"
-                      id="email"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      placeholder="Enter your email address"
-                      required
-                    />
-                  </div>
-                </div>
 
-                <div className="form-group">
-                  <label htmlFor="password">Password</label>
-                  <div className="input-wrapper">
-                    <Lock className="input-icon" size={20} />
-                    <input
-                      type={showPassword ? 'text' : 'password'}
-                      id="password"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      placeholder="Enter your Password"
-                      required
-                    />
-                    <button
-                      type="button"
-                      className="password-toggle"
-                      onClick={() => setShowPassword(!showPassword)}
-                    >
-                      {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
-                    </button>
-                  </div>
-                </div>
-
-                <div className="form-options">
-                  <label className="checkbox-wrapper">
-                    <input
-                      type="checkbox"
-                      checked={rememberMe}
-                      onChange={(e) => setRememberMe(e.target.checked)}
-                    />
-                    <span className="checkmark"></span>
-                    Remember me
-                  </label>
-                  <a href="#" className="forgot-password">Forgot Password ?</a>
-                </div>
-
-                <button type="submit" className="login-button">
-                  Login
-                </button>
-
-                <div className="divider">
-                  <span>or continue with</span>
-                </div>
-
-                <div className="social-buttons">
+              {/* Password */}
+              <div className="form-group">
+                <label>Password</label>
+                <div className="input-wrapper">
+                  <Lock className="input-icon" size={20} />
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="Enter your password"
+                    required
+                  />
                   <button
                     type="button"
-                    className="social-btn google"
-                    onClick={() => loginWithRedirect({ connection: "google-oauth2" })}
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="password-toggle"
                   >
-                    <img src="/google.png" alt="Google" width="20" height="20" />
-                  </button>
-                  <button
-                    type="button"
-                    className="social-btn facebook"
-                    onClick={() => loginWithRedirect({ connection: "facebook" })}
-                  >
-                    <img src="/Facebook.png" alt="Facebook" width="20" height="20" />
-                  </button>
-                  <button
-                    type="button"
-                    className="social-btn appple"
-                    onClick={() => loginWithRedirect({ connection: "windowslive" })}
-                  >
-                    <img src="/apple.png" alt="Microsoft" width="20" height="20" />
+                    {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
                   </button>
                 </div>
-              </form>
-            )}
+              </div>
+
+              {/* Error Message (hide "oauth param not configured.") */}
+              {error && error !== "oauth param not configured." && (
+                <p className="error-message">{error}</p>
+              )}
+
+              {/* Submit */}
+              <button type="submit" className="login-button">
+                Login
+              </button>
+
+              <p className="login-disclaimer">
+                🔑 Google Login option is coming soon! For now, please use your account credentials.
+              </p>
+            </form>
           </div>
         </div>
+        
       </div>
     </div>
   );
