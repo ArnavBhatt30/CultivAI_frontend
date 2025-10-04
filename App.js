@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import cropImage from './homepage.png';
-import { signOut } from "aws-amplify/auth";
+import { Amplify } from 'aws-amplify';
+import { fetchAuthSession, getCurrentUser, signOut } from "aws-amplify/auth";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { MdHeadsetMic, MdChat, MdEmail, MdMic, MdMicOff } from "react-icons/md";
@@ -397,49 +398,70 @@ function WeatherSection() {
 
 
 const CultivAI = () => {
+  // ============================================
+  // 1. ALL HOOKS MUST BE DECLARED FIRST - BEFORE ANY CONDITIONAL RETURNS
+  // ============================================
+  
   // Main app states
   const [isDragOver, setIsDragOver] = useState(false);
   const [showCamera, setShowCamera] = useState(false);
-  const recognitionRef = useRef(null);
   const [uploadedImage, setUploadedImage] = useState(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysis, setAnalysis] = useState(null);
   const [activeNav, setActiveNav] = useState("Home");
   const [activePopup, setActivePopup] = useState(null);
-
-  const closePopup = () => setActivePopup(null);
-  // Add theme state
   const [theme, setTheme] = useState('light');
   const [isDarkMode, setIsDarkMode] = useState(false);
-
-
-  // ✅ Chatbot States
   const [messages, setMessages] = useState([
     { role: "assistant", text: "🌱 Hello! Ask me any farming question." },
   ]);
   const [loading, setLoading] = useState(false);
   const [query, setQuery] = useState("");
   const [listening, setListening] = useState(false);
-  const navigate = useNavigate();
-  const handleLogout = async () => {
-  await signOut();                  // clears tokens from Cognito + localStorage
-  window.location.href = "/login";  // full reload to reset state
-  };
+  const [authReady, setAuthReady] = useState(false);
+  const [openIndex, setOpenIndex] = useState(null);
+  const [page, setPage] = useState(1);
+  const [result, setResult] = useState("");
 
-  // Refs for scrolling to sections
-    // Refs for scrolling to sections
+  // All useRef hooks
+  const recognitionRef = useRef(null);
   const homeRef = useRef(null);
   const aiRef = useRef(null);
   const weatherRef = useRef(null);
   const contactRef = useRef(null);
   const lenisRef = useRef(null);
 
+  // Other hooks
+  const navigate = useNavigate();
+
+  // Auth check effect
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        await fetchAuthSession();
+        await getCurrentUser();
+
+        const url = new URL(window.location.href);
+        if (url.searchParams.has("code") || url.searchParams.has("state")) {
+          url.search = "";
+          window.history.replaceState({}, document.title, url.toString());
+        }
+
+        if (mounted) setAuthReady(true);
+      } catch (e) {
+        console.error("Not authenticated, redirecting to /login:", e);
+        navigate("/login", { replace: true });
+      }
+    })();
+    return () => { mounted = false; };
+  }, [navigate]);
+
   // Initialize Lenis for smooth scrolling
   useEffect(() => {
-    // Initialize Lenis smooth scrolling
     lenisRef.current = new Lenis({
       duration: 1.2,
-      easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)), // https://www.desmos.com/calculator/brs54l4xou
+      easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
       direction: 'vertical',
       gestureDirection: 'vertical',
       smooth: true,
@@ -449,26 +471,23 @@ const CultivAI = () => {
       infinite: false,
     });
 
-    // Connect lenis to requestAnimationFrame
     function raf(time) {
       lenisRef.current.raf(time);
       requestAnimationFrame(raf);
     }
     requestAnimationFrame(raf);
 
-    // Cleanup function
     return () => {
       lenisRef.current.destroy();
     };
   }, []);
 
-  // Load theme from localStorage if available
+  // Load theme from localStorage
   useEffect(() => {
     const savedTheme = localStorage.getItem('theme');
     if (savedTheme) {
       setTheme(savedTheme);
     } else {
-      // Check user's system preference
       const prefersDarkMode = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
       if (prefersDarkMode) {
         setTheme('dark');
@@ -481,7 +500,6 @@ const CultivAI = () => {
     document.body.className = theme;
     localStorage.setItem('theme', theme);
     
-    // Update Chart.js colors based on theme
     if (ChartJS.defaults) {
       if (theme === 'dark') {
         ChartJS.defaults.color = '#e0e0e0';
@@ -493,71 +511,93 @@ const CultivAI = () => {
     }
   }, [theme]);
 
-  // Toggle theme function
-  const toggleTheme = () => {
-    const newTheme = theme === 'light' ? 'dark' : 'light';
-    setTheme(newTheme);
-  };
+  // Speech recognition effect - FIXED VERSION
+  useEffect(() => {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      return;
+    }
 
-  // FAQ and other states
+    const recognition = new SpeechRecognition();
+    recognition.lang = "en-US";
+    recognition.continuous = true;
+    recognition.interimResults = true;
+
+    recognition.onresult = (event) => {
+      let finalTranscript = "";
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        if (event.results[i].isFinal) {
+          finalTranscript += event.results[i][0].transcript + " ";
+        }
+      }
+      if (finalTranscript) setQuery((prev) => prev + finalTranscript);
+    };
+
+    recognition.onerror = (e) => {
+      console.error("Speech recognition error:", e.error);
+      setListening(false);
+    };
+
+    recognition.onend = () => {
+      setListening(false);
+    };
+
+    recognitionRef.current = recognition;
+    
+    return () => {
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.stop();
+        } catch (e) {
+          // ignore errors on cleanup
+        }
+      }
+    };
+  }, []); // Empty dependency array
+
+  // ============================================
+  // 2. CONSTANTS AND DATA (after all hooks)
+  // ============================================
   const faqs = [
-  // Page 1
-  { q: "How does CultivAI analyze crop images?", a: "You can upload a leaf or pest photo, and our AI model will detect if it's healthy or affected by a disease or pest." },
-  { q: "What kind of crops or diseases can CultivAI identify?", a: "Our model currently recognizes 18 common crop diseases and pests such as Leaf Blight, Mosaic, Anthracnose, Fall Armyworm, and more." },
-  { q: "Do I need high-quality images for analysis?", a: "Clear photos of the leaf or pest work best. Avoid blurry or very dark images for accurate results." },
-  { q: "Can CultivAI give solutions for detected diseases?", a: "Yes, along with the disease name, we provide tailored recommendations for treatment and preventive measures." },
-  { q: "Does CultivAI support local languages?", a: "We're building multilingual support so farmers can interact in their preferred language." },
-  { q: "Can I also get weather updates through CultivAI?", a: "Yes, our weather section provides real-time weather info and a 5‑day forecast to help you plan farming activities." },
+    { q: "How does CultivAI analyze crop images?", a: "You can upload a leaf or pest photo, and our AI model will detect if it's healthy or affected by a disease or pest." },
+    { q: "What kind of crops or diseases can CultivAI identify?", a: "Our model currently recognizes 18 common crop diseases and pests such as Leaf Blight, Mosaic, Anthracnose, Fall Armyworm, and more." },
+    { q: "Do I need high-quality images for analysis?", a: "Clear photos of the leaf or pest work best. Avoid blurry or very dark images for accurate results." },
+    { q: "Can CultivAI give solutions for detected diseases?", a: "Yes, along with the disease name, we provide tailored recommendations for treatment and preventive measures." },
+    { q: "Does CultivAI support local languages?", a: "We're building multilingual support so farmers can interact in their preferred language." },
+    { q: "Can I also get weather updates through CultivAI?", a: "Yes, our weather section provides real-time weather info and a 5‑day forecast to help you plan farming activities." },
+    { q: "Is my data safe when I upload images?", a: "Yes, your images are only used for analysis and are not shared with anyone." },
+    { q: "What crops does CultivAI currently support?", a: "Currently we focus on rice, wheat, maize, tomato, potato, and several vegetables, with more being added soon." },
+    { q: "Does CultivAI work offline?", a: "An internet connection is required for analysis and updates, but offline-ready versions are in development." },
+    { q: "Can I get fertilizer recommendations?", a: "Yes, based on detected crop issues, CultivAI provides fertilizer and soil management suggestions." },
+    { q: "Does CultivAI only identify diseases?", a: "No, it also gives pest control, nutrient management, irrigation alerts, and preventive guidance." },
+    { q: "How accurate is CultivAI?", a: "Our crop disease detection achieves over 90% accuracy with clear images from the farm." },
+    { q: "Can I share my reports with others?", a: "Yes, download or share recommendations with extension workers or other farmers." },
+    { q: "Is CultivAI free to use?", a: "Yes, basic analysis and weather are free. Premium features with advanced analytics will launch later." },
+    { q: "How can CultivAI help reduce pesticide use?", a: "By detecting early, it recommends targeted, minimal, and safe use of chemicals, plus organic alternatives." },
+    { q: "Can it detect nutrient deficiencies?", a: "Yes, CultivAI can identify deficiencies like nitrogen, potassium, and magnesium based on leaf symptoms." },
+    { q: "How does CultivAI support sustainable farming?", a: "By suggesting organic options, balanced fertilizer use, and integrated pest management practices." },
+    { q: "Can CultivAI work on low-end smartphones?", a: "Yes, the app is optimized for low data usage and works on most Android phones used in rural areas." },
+    { q: "Does CultivAI integrate with government schemes?", a: "Future plans include linking with local advisories and subsidy programs for seamless farmer access." },
+    { q: "Can it help me decide irrigation schedules?", a: "Yes, the weather forecasts and soil health integration help in planning optimal irrigation." },
+    { q: "What should I do if my crop is not listed?", a: "Send feedback via the app. We're continuously training CultivAI on new crops and diseases." },
+    { q: "Does CultivAI work at night?", a: "Yes, dark images can still be uploaded, but best results come from daylight or clear lighting." },
+    { q: "Does it detect multiple problems at once?", a: "Yes, if multiple issues appear together (like pest + nutrient deficiency), you'll get combination recommendations." },
+    { q: "Can CultivAI help in crop yield prediction?", a: "Future updates will include AI-driven estimates for expected yield based on plant health and weather." },
+    { q: "Is there voice input for illiterate farmers?", a: "Yes, farmers can ask questions in their local language using the microphone feature." },
+    { q: "Can CultivAI recognize weeds?", a: "We are expanding the dataset to identify major weeds affecting cereal and vegetable crops." },
+    { q: "How does image analysis work with spotty internet?", a: "Images upload in compressed form; analysis resumes when the network is stable." },
+    { q: "Does CultivAI help in market price prediction?", a: "Market price insights are planned for integration in future updates." },
+    { q: "Does CultivAI integrate with drones?", a: "In the pipeline: drone-captured images for large field scanning." },
+    { q: "How does CultivAI update its knowledge?", a: "The model is retrained frequently with new field data and verified extension guidelines." },
+    { q: "What devices are supported for CultivAI?", a: "Any modern browser, Android phone, or tablet. iOS support is in development." },
+    { q: "Can CultivAI give planting advice?", a: "Yes, we provide guidelines for planting time, seed treatment, and land preparation." },
+    { q: "How does it support horticulture crops?", a: "We're training it to include fruit and vegetable diseases like blight in tomato and rust in beans." },
+    { q: "Are the pesticide recommendations safe?", a: "Yes, pesticides suggested follow government-approved safe use practices." },
+    { q: "How quickly can farmers get results?", a: "Results are generated within seconds after uploading photos." },
+    { q: "Can CultivAI predict pest outbreaks?", a: "Integration with weather and monitoring data will allow early pest outbreak alerts soon." }
+  ];
 
-  // Page 2
-  { q: "Is my data safe when I upload images?", a: "Yes, your images are only used for analysis and are not shared with anyone." },
-  { q: "What crops does CultivAI currently support?", a: "Currently we focus on rice, wheat, maize, tomato, potato, and several vegetables, with more being added soon." },
-  { q: "Does CultivAI work offline?", a: "An internet connection is required for analysis and updates, but offline-ready versions are in development." },
-  { q: "Can I get fertilizer recommendations?", a: "Yes, based on detected crop issues, CultivAI provides fertilizer and soil management suggestions." },
-  { q: "Does CultivAI only identify diseases?", a: "No, it also gives pest control, nutrient management, irrigation alerts, and preventive guidance." },
-  { q: "How accurate is CultivAI?", a: "Our crop disease detection achieves over 90% accuracy with clear images from the farm." },
-
-  // Page 3
-  { q: "Can I share my reports with others?", a: "Yes, download or share recommendations with extension workers or other farmers." },
-  { q: "Is CultivAI free to use?", a: "Yes, basic analysis and weather are free. Premium features with advanced analytics will launch later." },
-  { q: "How can CultivAI help reduce pesticide use?", a: "By detecting early, it recommends targeted, minimal, and safe use of chemicals, plus organic alternatives." },
-  { q: "Can it detect nutrient deficiencies?", a: "Yes, CultivAI can identify deficiencies like nitrogen, potassium, and magnesium based on leaf symptoms." },
-  { q: "How does CultivAI support sustainable farming?", a: "By suggesting organic options, balanced fertilizer use, and integrated pest management practices." },
-  { q: "Can CultivAI work on low-end smartphones?", a: "Yes, the app is optimized for low data usage and works on most Android phones used in rural areas." },
-
-  // Page 4
-  { q: "Does CultivAI integrate with government schemes?", a: "Future plans include linking with local advisories and subsidy programs for seamless farmer access." },
-  { q: "Can it help me decide irrigation schedules?", a: "Yes, the weather forecasts and soil health integration help in planning optimal irrigation." },
-  { q: "What should I do if my crop is not listed?", a: "Send feedback via the app. We’re continuously training CultivAI on new crops and diseases." },
-  { q: "Does CultivAI work at night?", a: "Yes, dark images can still be uploaded, but best results come from daylight or clear lighting." },
-  { q: "Does it detect multiple problems at once?", a: "Yes, if multiple issues appear together (like pest + nutrient deficiency), you’ll get combination recommendations." },
-  { q: "Can CultivAI help in crop yield prediction?", a: "Future updates will include AI-driven estimates for expected yield based on plant health and weather." },
-
-  // Page 5
-  { q: "Is there voice input for illiterate farmers?", a: "Yes, farmers can ask questions in their local language using the microphone feature." },
-  { q: "Can CultivAI recognize weeds?", a: "We are expanding the dataset to identify major weeds affecting cereal and vegetable crops." },
-  { q: "How does image analysis work with spotty internet?", a: "Images upload in compressed form; analysis resumes when the network is stable." },
-  { q: "Does CultivAI help in market price prediction?", a: "Market price insights are planned for integration in future updates." },
-  { q: "Does CultivAI integrate with drones?", a: "In the pipeline: drone-captured images for large field scanning." },
-  { q: "How does CultivAI update its knowledge?", a: "The model is retrained frequently with new field data and verified extension guidelines." },
-
-  // Page 6
-  { q: "What devices are supported for CultivAI?", a: "Any modern browser, Android phone, or tablet. iOS support is in development." },
-  { q: "Can CultivAI give planting advice?", a: "Yes, we provide guidelines for planting time, seed treatment, and land preparation." },
-  { q: "How does it support horticulture crops?", a: "We’re training it to include fruit and vegetable diseases like blight in tomato and rust in beans." },
-  { q: "Are the pesticide recommendations safe?", a: "Yes, pesticides suggested follow government-approved safe use practices." },
-  { q: "How quickly can farmers get results?", a: "Results are generated within seconds after uploading photos." },
-  { q: "Can CultivAI predict pest outbreaks?", a: "Integration with weather and monitoring data will allow early pest outbreak alerts soon." }
-];
-
-
-  const [openIndex, setOpenIndex] = useState(null);
-  const [page, setPage] = useState(1);
   const perPage = 6;
-
-  // FarmingAssistant states
-  const [result, setResult] = useState("");
-
   const mockResponse = {
     "mock data": "🌱 Mock Analysis: Your crops are healthy. Recommended fertilizer: NPK 20-20-20. Watering every 3 days is optimal."
   };
@@ -566,17 +606,71 @@ const CultivAI = () => {
   const start = (page - 1) * perPage;
   const pagedFaqs = faqs.slice(start, start + perPage);
 
-  // Smooth scroll function using Lenis
+  // ============================================
+  // 3. FUNCTIONS (after all hooks and constants)
+  // ============================================
+  const closePopup = () => setActivePopup(null);
+  
+  const toggleTheme = () => {
+    const newTheme = theme === 'light' ? 'dark' : 'light';
+    setTheme(newTheme);
+  };
+
+        // Always clear Cognito Hosted UI session cookie, not just local tokens
+          const buildHostedLogoutUrl = () => {
+  const cfg = Amplify.getConfig()?.Auth?.Cognito;
+  const oauth = cfg?.loginWith?.oauth || cfg?.oauth || {};
+
+  const domain =
+    oauth.domain ||
+    process.env.REACT_APP_COGNITO_DOMAIN; // e.g. eu-north-10rmffvoo6.auth.eu-north-1.amazoncognito.com
+
+  const clientId =
+    cfg?.userPoolClientId ||
+    process.env.REACT_APP_COGNITO_CLIENT_ID; // your app client id
+
+  const logoutUri =
+    (oauth.redirectSignOut && oauth.redirectSignOut[0]) ||
+    process.env.REACT_APP_REDIRECT_SIGN_OUT ||
+    `${window.location.origin}/login`; // fallback to /login on current origin
+
+  if (!domain || !clientId) return null;
+
+  const fullDomain = domain.startsWith('http://') ? domain : `http://${domain}`;
+  return `${fullDomain}/logout?client_id=${encodeURIComponent(clientId)}&logout_uri=${encodeURIComponent(logoutUri)}`;
+};
+
+// Force Hosted UI logout every time (clears Cognito session cookie)
+const handleLogout = async () => {
+  const hostedLogoutUrl = buildHostedLogoutUrl();
+
+  try {
+    // Clear local tokens first
+    await signOut();
+  } catch (err) {
+    console.warn('signOut error (ignored):', err);
+  } finally {
+    // ALWAYS hit Hosted UI /logout so Hosted UI cookie is cleared
+    if (hostedLogoutUrl) {
+      window.location.replace(hostedLogoutUrl);
+    } else {
+      // Last resort if config missing
+      localStorage.clear();
+      sessionStorage.clear();
+      window.location.replace('/login');
+    }
+  }
+};
+
+  // Rest of your functions...
   const scrollToSection = (ref, isHome = false) => {
     if (isHome) {
-      // For home, scroll to the very top of the page
       lenisRef.current.scrollTo(0, {
         duration: 1.2,
         easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t))
       });
     } else if (ref && ref.current) {
-      // For other sections, account for header height
-      const headerHeight = 80; // Adjust based on your header height
+      const headerHeight = 80;
       const element = ref.current;
       const elementPosition = element.getBoundingClientRect().top + window.pageYOffset;
       const offsetPosition = elementPosition - headerHeight;
@@ -588,14 +682,13 @@ const CultivAI = () => {
     }
   };
 
-  // Navigation handler with smooth scrolling
   const handleNavClick = (item, e) => {
     e.preventDefault();
     setActiveNav(item);
     
     switch(item) {
       case "Home":
-        scrollToSection(null, true); // true indicates this is home
+        scrollToSection(null, true);
         break;
       case "AI":
         scrollToSection(aiRef);
@@ -611,7 +704,6 @@ const CultivAI = () => {
     }
   };
 
-  // File Upload Handlers
   const handleDragOver = (e) => {
     e.preventDefault();
     setIsDragOver(true);
@@ -649,155 +741,117 @@ const CultivAI = () => {
     }
   };
 
-  // Camera capture handler
   const handleCameraCapture = (file) => {
     handleFileUpload(file);
     setShowCamera(false);
   };
 
   const performAnalysis = async () => {
-  if (!uploadedImage) return;
+    if (!uploadedImage) return;
 
-  try {
-    setIsAnalyzing(true);
-    const formData = new FormData();
-    const blob = await fetch(uploadedImage).then(r => r.blob()); // convert base64 to blob
-    formData.append("file", blob, "crop.jpg"); // adjust "file" to your API param name
+    try {
+      setIsAnalyzing(true);
+      const formData = new FormData();
+      const blob = await fetch(uploadedImage).then(r => r.blob());
+      formData.append("file", blob, "crop.jpg");
 
-    const res = await fetch("http://127.0.0.1:8000/predict", { // ✅ replace with your Swagger API endpoint
-      method: "POST",
-      body: formData,
-    });
+      const res = await fetch("http://127.0.0.1:8000/predict", {
+        method: "POST",
+        body: formData,
+      });
 
-    if (!res.ok) throw new Error("API request failed");
-    const data = await res.json();
+      if (!res.ok) throw new Error("API request failed");
+      const data = await res.json();
 
-    // Adapt this depending on your backend response schema
-    // Capitalize disease name for matching
-          let detectedDisease = data.crop_disease
-      ? data.crop_disease
-      : "Unknown";
+      let detectedDisease = data.crop_disease ? data.crop_disease : "Unknown";
+      let extraRecs = diseaseCures[detectedDisease] || [];
 
-          let extraRecs = diseaseCures[detectedDisease] || [];
+      setAnalysis({
+        crop: detectedDisease,
+        health: data.health || "Unknown",
+        confidence: data.confidence || "N/A",
+        issues: data.issues || [],
+        recommendations: [...(data.recommendations || []), ...extraRecs],
+      });
 
-          setAnalysis({
-            crop: detectedDisease,
-            health: data.health || "Unknown",
-            confidence: data.confidence || "N/A",
-            issues: data.issues || [],
-            recommendations: [...(data.recommendations || []), ...extraRecs],
-          });
-
-
-
-
-      } catch (err) {
-        console.error("Error calling AI API:", err);
-        setAnalysis({
-          crop: "Error",
-          health: "Error",
-          issues: ["Could not analyze image"],
-          recommendations: ["Try again later"],
-          confidence: "0%",
-        });
-      } finally {
-        setIsAnalyzing(false);
-      }
-    };
-
+    } catch (err) {
+      console.error("Error calling AI API:", err);
+      setAnalysis({
+        crop: "Error",
+        health: "Error",
+        issues: ["Could not analyze image"],
+        recommendations: ["Try again later"],
+        confidence: "0%",
+      });
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
 
   const resetUpload = () => {
     setUploadedImage(null);
     setAnalysis(null);
     setIsAnalyzing(false);
   };
-  useEffect(() => {
-  const SpeechRecognition =
-    window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (!SpeechRecognition) {
-    alert("Voice recognition not supported in this browser.");
-    return;
-  }
 
-  const recognition = new SpeechRecognition();
-  recognition.lang = "en-US";
-  recognition.continuous = true;     // try to stay alive
-  recognition.interimResults = true;
-
-  recognition.onresult = (event) => {
-    let finalTranscript = "";
-    for (let i = event.resultIndex; i < event.results.length; i++) {
-      if (event.results[i].isFinal) {
-        finalTranscript += event.results[i][0].transcript + " ";
-      }
+  // FIXED handleVoice function
+  const handleVoice = () => {
+    if (!recognitionRef.current) {
+      alert("Voice recognition not supported in this browser.");
+      return;
     }
-    if (finalTranscript) setQuery((prev) => prev + finalTranscript);
-  };
 
-  recognition.onerror = (e) => {
-    console.error("Speech recognition error:", e.error);
-    setListening(false);
-  };
-
-  recognition.onend = () => {
-    // 🔑 If you didn't explicitly stop, restart it
-    if (listening) {
-      recognition.start();
-    } else {
+    try {
+      if (!listening) {
+        recognitionRef.current.start();
+        setListening(true);
+      } else {
+        recognitionRef.current.stop();
+        setListening(false);
+      }
+    } catch (e) {
+      console.error("Voice recognition error:", e);
       setListening(false);
     }
   };
 
-  recognitionRef.current = recognition;
-}, [listening]); // depend on listening
+  const handleSearch = async () => {
+    if (!query.trim()) return;
 
-  // ✅ Chat Handler (calls your backend)
-  // Enhanced Voice Recognition for Chat with real-time transcription
-      const handleVoice = () => {
-        if (!recognitionRef.current) return;
+    const newMessage = { role: "user", text: query.trim() };
+    setMessages((prev) => [...prev, newMessage]);
+    setLoading(true);
+    setQuery("");
 
-        if (!listening) {
-          recognitionRef.current.start();
-          setListening(true);
-        } else {
-          recognitionRef.current.stop();
-          setListening(false);
-        }
-    };
+    try {
+      const res = await fetch("http://localhost:3001/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messages: [...messages, newMessage] }),
+      });
 
-// Update the handleSearch function to work with both voice and text
-      const handleSearch = async () => {
-        if (!query.trim()) return;
+      const data = await res.json();
+      console.log("👉 Response from backend:", data);
 
-        // Push user message
-        const newMessage = { role: "user", text: query.trim() };
-        setMessages((prev) => [...prev, newMessage]);
-        setLoading(true);
-        setQuery("");
+      if (data.bullets) {
+        setMessages((prev) => [...prev, { role: "assistant", bullets: data.bullets }]);
+      } else {
+        setMessages((prev) => [...prev, { role: "assistant", text: "⚠️ No response" }]);
+      }
+    } catch (err) {
+      console.error("❌ Error fetching:", err);
+      setMessages((prev) => [...prev, { role: "assistant", text: "⚠️ Something went wrong." }]);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-        try {
-          const res = await fetch("http://localhost:3001/api/chat", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ messages: [...messages, newMessage] }),
-          });
-
-          const data = await res.json();
-          console.log("👉 Response from backend:", data);
-
-          if (data.bullets) {
-            // Store bullets instead of text
-            setMessages((prev) => [...prev, { role: "assistant", bullets: data.bullets }]);
-          } else {
-            setMessages((prev) => [...prev, { role: "assistant", text: "⚠️ No response" }]);
-          }
-        } catch (err) {
-          console.error("❌ Error fetching:", err);
-          setMessages((prev) => [...prev, { role: "assistant", text: "⚠️ Something went wrong." }]);
-        } finally {
-          setLoading(false);
-        }
-      };
+  // ============================================
+  // 4. CONDITIONAL RETURNS (ONLY AFTER ALL HOOKS)
+  // ============================================
+  if (!authReady) {
+    return <div style={{ padding: 24 }}>Signing you in…</div>;
+  }
 
   return (
     <div className={`cultivai-container ${theme}`}>
