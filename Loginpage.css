@@ -88,7 +88,34 @@ body {
 .logo:hover {
   transform: scale(1.05);
 }
+/* Social login */
+.social-login { width: 100%; margin-bottom: 16px; }
 
+.btn-google {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 8px;
+  border: 1px solid #dadce0;
+  background: #fff;
+  color: #111827;
+  font-weight: 600;
+  cursor: pointer;
+  transition: box-shadow .15s ease, transform .02s ease;
+}
+.btn-google:hover { box-shadow: 0 2px 10px rgba(0,0,0,.06); }
+.btn-google:active { transform: translateY(1px); }
+.btn-google__icon { width: 18px; height: 18px; }
+
+.social-divider {
+  display: flex; align-items: center; gap: 10px;
+  margin: 12px 0 4px; color: #9ca3af; font-size: .9rem; user-select: none;
+}
+.social-divider::before,
+.social-divider::after { content: ""; flex: 1; height: 1px; background: #e5e7eb; }
 .logo-icon {
   width: 250px;
   height: 250px;
