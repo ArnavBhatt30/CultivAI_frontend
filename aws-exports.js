@@ -1,28 +1,24 @@
-// src/aws-exports.js
-
 const awsExports = {
   Auth: {
     Cognito: {
-      
-      userPoolId: "ur userpoolid",       
-      userPoolClientId: "poolclientid",   
-      signUpVerificationMethod: "code",      
-      loginWith: {
-        
-        email: true,
-        username: false,
+      userPoolId: 'poolid',
+      userPoolClientId: 'poolclientid',
+      signUpVerificationMethod: 'code',
+      loginWith: { 
+        email: true, 
+        username: false, 
         phone: false,
-      },
-      oauth: {
-        domain: "domain", // ✅ correct domain
-        scope: ["openid", "email", "phone"],
-        redirectSignIn: "link",
-        redirectSignOut: "link",
-        responseType: "code",
+        oauth: {
+          domain: 'domainid',
+          scopes: ['email', 'openid', 'profile'], // ✅ Fixed order
+          redirectSignIn: ['http://localhost:3000/dashboard'],
+          redirectSignOut: ['http://localhost:3000/login'],
+          responseType: 'code',
+          providers: ['Google']
         }
-    },
-  },
+      }
+    }
+  }
 };
-
 
 export default awsExports;
